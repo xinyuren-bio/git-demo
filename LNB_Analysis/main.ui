@@ -994,7 +994,7 @@ Button */
                    <string notr="true">background-image:url(:/icons/images/icons/cil-briefcase.png)</string>
                   </property>
                   <property name="text">
-                   <string>Tools</string>
+                   <string>AnalysisTools</string>
                   </property>
                  </widget>
                 </item>
@@ -2158,6 +2158,11 @@ background-repeat: no-repeat;</string>
                               <item>
                                <property name="text">
                                 <string>Area</string>
+                               </property>
+                              </item>
+                              <item>
+                               <property name="text">
+                                <string>PCA</string>
                                </property>
                               </item>
                               <item>

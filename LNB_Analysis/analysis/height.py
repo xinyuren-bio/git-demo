@@ -1,6 +1,11 @@
 """
 2024.5.20
-
+2024.6.17
+修改：
+1.统一了格式问题
+2.使用了新的mask方式（不同于lip）
+问题：
+同area
 """
 from MDAnalysis.analysis.base import AnalysisBase
 import MDAnalysis as mda
@@ -11,7 +16,6 @@ from scipy.linalg import eigh
 import warnings
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
-from mocarto import Mocartoo
 import pandas as pd
 
 warnings.filterwarnings('ignore')
@@ -19,94 +23,87 @@ warnings.filterwarnings('ignore')
 
 class Height(AnalysisBase):
 
-    def __init__(self, universe, residue_group: dict, file_path, k=10, method=None, callBack=None):
+    def __init__(self, universe, residuesGroup: dict, k=None, file_path=None):
         super().__init__(universe.trajectory)
+
         self.u = universe
-        self.residues_dict = residue_group
+        self.residues = [i for i in residuesGroup]
         self.k = k
         self.file_path = file_path
-        self.figureMethod = method
-        self.call = callBack
-        self._residues = list(self.residues_dict.keys())
-        self._head = [' '.join(i[0]) for i in self.residues_dict.values()]
-        self._tail = [' '.join(i[1]) for i in self.residues_dict.values()]
 
-        self._sel_head = self.u.atoms[[]]
-        self._sel_tail = self.u.atoms[[]]
-        self._mask = self.u.atoms[[]]
+        self.headSp = {sp: ' '.join(residuesGroup[sp][0]) for sp in residuesGroup}
+        self.tailSp = {sp: ' '.join(residuesGroup[sp][-1]) for sp in residuesGroup}
 
-        # for i in range(len(self._residues)):
+        self.headAtoms = self.u.atoms[[]]
+        self.tailAtoms = self.u.atoms[[]]
 
-        for i in range(len(self._residues)):
-            self._sel_head += self.u.select_atoms('resname %s and name %s'
-                                                  % (self._residues[i], self._head[i]))
+        self.numSp = {}
 
-        for i in range(len(self._residues)):
-            self._sel_tail += self.u.select_atoms('resname %s and name %s'
-                                                  % (self._residues[i], self._tail[i]))
+        self._headBool = {}
+        for i in range(len(self.residues)):
+            sp = self.residues[i]
+            self.headAtoms += self.u.select_atoms('resname %s and name %s'
+                                                  % (sp, self.headSp[sp]))
 
+            self.tailAtoms += self.u.select_atoms('resname %s and name %s'
+                                                  % (sp, self.tailSp[sp]))
 
-        self._n_residues = self._sel_head.n_residues
+        self._n_residues = self.headAtoms.n_residues
 
-        self._mask_head = {
-            sp: self._sel_head.resnames == sp for sp in self._residues
+        self._tailMask = {
+            sp: self.tailAtoms.resnames == sp for sp in self.residues
         }
 
-        self._mask_tail = {
-            sp: self._sel_tail.resnames == sp for sp in self._residues
+        self.numSp = {
+            sp: i.n_residues for sp, i in self.headAtoms.groupby('resnames').items()
         }
+        # ///////////////////////////////////////////////////////////////////////////
+        # 待优化
+        self._headMask = {}
+        for x in range(len(self.residues)):
+            if x == 0:
+                num = 0
+            sp = self.residues[x]
+            arrBool = np.full(self._n_residues, False)
+            arrBool[num:num+self.numSp[sp]] = True
+            self._headMask[sp] = arrBool
+            num += self.numSp[sp]
 
-        self._mask_all = {
-            sp: self.u.atoms.resnames == sp for sp in self._residues
-        }
-
-        self.results.SZ = None
+        self.results.Height = None
 
     def _prepare(self):
-        self.results.Height = np.full([self._sel_head.n_residues, self.n_frames],
+        self.results.Height = np.full([self._n_residues, self.n_frames],
                                       fill_value=np.NaN)
-        self.meanHeadPositions = np.full(shape=[self._sel_head.n_atoms, 3],
-                                         fill_value=np.NaN)
 
     def _single_frame(self):
-        for sp in self._residues:
-            n_sp1 = self._mask_head[sp].sum()
-            sp_head = self._sel_head[self._mask_head[sp]]
-            spHeadPos = sp_head.positions.reshape([n_sp1, -1, 3])
-            self.meanHeadPositions[self._mask_head[sp]] = np.mean(spHeadPos, axis=1)
-        normals = self.find_k_nearest_neighbors_and_normals(self.meanHeadPositions, self.k)
-        for sp in self._residues:
-            sp_normal = normals[self._mask_head[sp]]
-            n_sp = self._mask_head[sp].sum()
-            sp_tail = self._sel_tail[self._mask_tail[sp]]
-
-            tail_positions = sp_tail.positions.reshape([n_sp, -1, 3])
-            tail_center = np.mean(tail_positions, axis=1)
-            head_to_tail = self.meanHeadPositions[self._mask_head[sp]] - tail_center
+        centerHeadSp = self.headAtoms.center_of_geometry(compound='residues')
+        normals = self.find_k_nearest_neighbors_and_normals(centerHeadSp)
+        centerTailSp = self.tailAtoms.center_of_geometry(compound='residues')
+        for sp in self.residues:
+            sp_normal = normals[self._headMask[sp]]
+            head_to_tail = centerHeadSp[self._headMask[sp]] - centerTailSp[self._headMask[sp]]
             distance = (np.abs(np.einsum('ij,ij->i', sp_normal, head_to_tail)))
-            self.results.Height[self._mask_head[sp], self._frame_index] = distance
+            self.results.Height[self._headMask[sp], self._frame_index] = distance
 
     @property
     def Height(self):
         return self.results.Height
 
     def fit_plane_and_get_normal(self, points):
-        mean = np.mean(points, axis=0)
-        centered_points = points - mean
+        centered_points = points - np.mean(points, axis=0)
         covariance_matrix = np.cov(centered_points.T)
         eigenvalues, eigenvectors = eigh(covariance_matrix)
         min_eigenvalue_index = np.argmin(eigenvalues)
         normal = eigenvectors[:, min_eigenvalue_index]
-        normal = normal / np.linalg.norm(normal)
-        return normal
+        return normal / np.linalg.norm(normal)
 
-    def find_k_nearest_neighbors_and_normals(self, particles, k):
+    def find_k_nearest_neighbors_and_normals(self, particles):
         kdtree = KDTree(particles)
         normals = np.zeros((particles.shape[0], 3))
         for i, point in enumerate(particles):
-            dists, idxs = kdtree.query(point, k + 1)
+            dists, idxs = kdtree.query(point, self.k + 1)
             nearest_neighbors = particles[idxs[1:]]
-            if nearest_neighbors.shape[0] >= k:
+            if nearest_neighbors.shape[0] >= self.k:
                 nearest_neighbors = np.vstack((nearest_neighbors, point))
                 normal = self.fit_plane_and_get_normal(nearest_neighbors)
                 normals[i] = normal
@@ -121,8 +118,8 @@ class Height(AnalysisBase):
         return normals
 
     def _conclude(self):
-            self.writeExcel()
-
+            # self.writeExcel()
+        pass
     def run(self, start=None, stop=None, step=None, frames=None,
             verbose=None, *, progressbar_kwargs={},callBack=None):
 
@@ -141,7 +138,8 @@ class Height(AnalysisBase):
             self.frames[i] = ts.frame
             self.times[i] = ts.time
             self._single_frame()
-            callBack((i * self.step/(self.stop - self.start) + 0.01) * 100)
+            if callBack:
+                callBack((i * self.step/(self.stop - self.start) + 0.01) * 100)
         self._conclude()
         return self
 
@@ -149,8 +147,8 @@ class Height(AnalysisBase):
     def writeExcel(self):
         columnFrame = [i*self.step for i in range(self.n_frames)]
         columnHead = ['resid'] + columnFrame
-        resids = self._sel_head.resids
-        resPos = np.column_stack((resids, self.results.Area))
+        resids = self.headAtoms.resids
+        resPos = np.column_stack((resids, self.results.Height))
         df = pd.DataFrame(resPos)
 
         df.to_excel('%s/area.xlsx' % self.file_path, header=columnHead, index=False)
@@ -222,13 +220,12 @@ class Height(AnalysisBase):
         plt.show()
 
     def make_figure_2d(self, method):
-        data = self.results.Height
         if method == 'bar':
-            for sp in self._residues:
-                plt.bar(sp, np.mean(np.mean(data[self._mask_head[sp]],axis=-1)), width=0.4, label='%s' % sp)
+            for sp in self.residues:
+                plt.bar(sp, np.mean(np.mean(self.results.Height[self._headMask[sp]],axis=-1)), width=0.4, label='%s' % sp)
         elif method == 'plot':
-            for sp in self._residues:
-                plt.plot(np.mean(data[self._mask_head[sp]], axis=0), label='%s' % sp)
+            for sp in self.residues:
+                plt.plot(np.mean(self.results.Height[self._headMask[sp]], axis=0), label='%s' % sp)
         plt.legend()
         plt.xlabel('Frames')
         plt.ylabel('Lipid Height(A)')
@@ -237,7 +234,8 @@ class Height(AnalysisBase):
 
 
 if __name__ == "__main__":
-    u = mda.Universe("E:/awork/lnb/june/01/B/ach.gro", "E:/awork/lnb/june/01/B/lnb_nojump.xtc",all_coordinates=False)
-    dict_residue = {'DPPC': (['PO4'], ['C4A', 'C4B']), 'CHOL': (['ROH'], ['R5']), 'D3PC': (['PO4'], ['C5A'])}
-    cls2 = Height(u,dict_residue,k=12,method='bar')
-    cls2.run(1,100,1,verbose=True)
+    u = mda.Universe("E:/awork/lnb/june/01/B/ach.gro", "E:/awork/lnb/june/01/B/lnb_nojump.xtc", all_coordinates=False)
+    dict_residue = {'DPPC': (['PO4'], ['C4A']),'D3PC': (['PO4'], ['C4A']),'CHOL':(['ROH'],['R5'])}
+    cls2 = Height(u,dict_residue,k=12)
+    cls2.run(500,1000,1,verbose=True)
+    cls2.make_figure_2d('bar')

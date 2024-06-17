@@ -1183,6 +1183,7 @@ class Ui_MainWindow(object):
         self.comboBox_2.addItem("")
         self.comboBox_2.addItem("")
         self.comboBox_2.addItem("")
+        self.comboBox_2.addItem("")
         self.comboBox_2.setObjectName(u"comboBox_2")
         self.comboBox_2.setFont(font)
         self.comboBox_2.setAutoFillBackground(False)
@@ -1715,8 +1716,9 @@ class Ui_MainWindow(object):
         self.comboBox_2.setItemText(0, QCoreApplication.translate("MainWindow", u"Height", None))
         self.comboBox_2.setItemText(1, QCoreApplication.translate("MainWindow", u"SZ", None))
         self.comboBox_2.setItemText(2, QCoreApplication.translate("MainWindow", u"Area", None))
-        self.comboBox_2.setItemText(3, QCoreApplication.translate("MainWindow", u"MeanCurvature", None))
-        self.comboBox_2.setItemText(4, QCoreApplication.translate("MainWindow", u"GussainCurvature", None))
+        self.comboBox_2.setItemText(3, QCoreApplication.translate("MainWindow", u"PCA", None))
+        self.comboBox_2.setItemText(4, QCoreApplication.translate("MainWindow", u"MeanCurvature", None))
+        self.comboBox_2.setItemText(5, QCoreApplication.translate("MainWindow", u"GussainCurvature", None))
 
         self.btn_next_height.setText("")
         self.labelBoxBlenderInstalation.setText(QCoreApplication.translate("MainWindow", u"FILE BOX", None))
@@ -1790,5 +1792,3 @@ class Ui_MainWindow(object):
         self.label.setText(QCoreApplication.translate("MainWindow", u"NEW PAGE TEST", None))
         self.creditsLabel.setText(QCoreApplication.translate("MainWindow", u"By: NanoBioMembrane Lab", None))
         self.version.setText(QCoreApplication.translate("MainWindow", u"v0.0.0", None))
-    # retranslateUi
-

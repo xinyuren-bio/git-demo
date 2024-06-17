@@ -102,7 +102,7 @@ class NextBtnClick:
         self.checkAtoms = []
         self.heightHeadAtoms = {}
         self.heightTailAtoms = {}
-        self.areaAtoms = {}
+        self.radioAtoms = {}
         # 函数执行
         self.layOut()
 
@@ -113,10 +113,13 @@ class NextBtnClick:
             self.SZ()
         if self.runMethod == 'Area':
             self.Area()
+        if self.runMethod == 'PCA':
+            self.PCA()
         if self.runMethod == 'MeanCurvature':
             self.MeanCurvature()
         if self.runMethod == 'GussainCurvature':
             self.GussainCurvature()
+
 
     def layOut(self):
         """
@@ -132,13 +135,17 @@ class NextBtnClick:
             checkbox.setStyleSheet(u"")
             self.ui.VLayoutRightResidue.addWidget(checkbox)
             self.checkBoxs.append(checkbox)
-        self.ui.btnNextResidue = QPushButton('Next')
+        if self.runMethod == 'PCA':
+            self.ui.btnNextResidue = QPushButton('RUN!')
+            self.ui.btnNextResidue.clicked.connect(lambda: self.compute())
+        else:
+            self.ui.btnNextResidue = QPushButton('Next')
+            self.ui.btnNextResidue.clicked.connect(lambda: self.getClickResidue())
         self.ui.btnNextResidue.setCursor(QCursor(Qt.PointingHandCursor))
         self.ui.btnNextResidue.setStyleSheet("background-color: #6272a4;")
         self.ui.VLayoutRightResidue.addWidget(self.ui.btnNextResidue)
         self.ui.VLayoutRightAll.addWidget(self.ui.frameResidue)
         self.ui.extraRightBox.setLayout(self.ui.VLayoutRightAll)
-        self.ui.btnNextResidue.clicked.connect(lambda: self.getClickResidue())
 
     def getClickResidue(self):
         """
@@ -148,22 +155,29 @@ class NextBtnClick:
         for box in self.checkBoxs:
             if box.isChecked():
                 self.residueClick.append(box.text())
-        self.getAtoms()
+        self.residueNext()
 
-    def getAtoms(self):
+    def residueNext(self):
         """
         获得勾选的残基的原子
         :return:
         """
         self.residueAtoms.clear()
-        for sp in self.residueClick:
-            self.residueAtoms[sp] = np.unique(self.u.select_atoms('resname %s' % sp).names)
+
+        def getAtom():
+            for sp in self.residueClick:
+                self.residueAtoms[sp] = np.unique(self.u.select_atoms('resname %s' % sp).names)
+
         if self.runMethod == 'Height':
-            self.DisplayAtom('选择头部原子(Head Atom)', 'Select Tail', btnType=QCheckBox, method='Height')
+            getAtom()
+            self.DisplayAtom('选择头部原子(Head Atom)', 'Select Tail', QCheckBox, method='Height')
         if self.runMethod == 'SZ':
-            self.DisplayAtom('请选择代表性原子', 'Next', 'QRadioBox', 'SZ')
+            getAtom()
+            self.DisplayAtom('请选择头部原子(Head Atom)', 'Next', QRadioButton, method='SZ')
         if self.runMethod == 'Area':
+            getAtom()
             self.DisplayAtom('请选择代表性原子', 'RUN!', QRadioButton, method='Area')
+
     @staticmethod
     def clearLayout(layout):
         while layout.count():
@@ -188,9 +202,14 @@ class NextBtnClick:
                                                    QGroupBox::title {color: white;}
                                                    QGroupBox QCheckBox {color: white;}""")
                 grouplayout = QVBoxLayout(groupbox)
-                for atm in self.residueAtoms[sp]:
-                    checkbox = Check_Ratio(atm)
-                    grouplayout.addWidget(checkbox)
+                if self.runMethod == 'SZ' and btnName == 'RUN!':
+                    for chain in ['Chain A', 'Chain B', 'Chain A + Chain B']:
+                        checkbox = Check_Ratio(chain)
+                        grouplayout.addWidget(checkbox)
+                else:
+                    for atm in self.residueAtoms[sp]:
+                        checkbox = Check_Ratio(atm)
+                        grouplayout.addWidget(checkbox)
                 self.checkAtoms.append(groupbox)
                 self.ui.VLayoutRightAtoms.addWidget(groupbox)
 
@@ -199,11 +218,12 @@ class NextBtnClick:
         makeGroup(btnType)
         scrollArea = QScrollArea()
         scrollArea.setWidget(widgetAtoms)
+
+
         scrollArea.setWidgetResizable(True)
         self.ui.VLayoutRightAll.addWidget(scrollArea)
         self.ui.VLayoutRightAll.addWidget(self.ui.btnNextCircle)
         self.ui.extraRightBox.setLayout(self.ui.VLayoutRightAll)
-
 
         if method == 'Height':
             if btnName == 'Select Tail':
@@ -217,9 +237,19 @@ class NextBtnClick:
                 self.ui.btnNextCircle.clicked.connect(lambda: self.compute())
 
         if method == 'Area':
-            self.ui.btnNextCircle.clicked.connect(lambda :self.checkGroup(self.checkAtoms, self.areaAtoms, QRadioButton))
+            self.ui.btnNextCircle.clicked.connect(lambda :self.checkGroup(self.checkAtoms, self.radioAtoms, QRadioButton))
             self.ui.btnNextCircle.clicked.connect(lambda :self.compute())
 
+        if method == 'SZ':
+            if btnName == 'Next':
+                self.ui.btnNextCircle.clicked.connect(
+                    lambda: self.checkGroup(self.checkAtoms, self.heightHeadAtoms, QRadioButton)
+                )
+                self.ui.btnNextCircle.clicked.connect(lambda: self.DisplayAtom(
+                    '请选择需要分析的链', 'RUN!', QRadioButton, 'SZ'))
+            if btnName == 'RUN!':
+                self.ui.btnNextCircle.clicked.connect(lambda :self.checkGroup(self.checkAtoms, self.radioAtoms, QRadioButton))
+                self.ui.btnNextCircle.clicked.connect(lambda :self.compute())
 
     def addProgressBar(self):
         self.ui.progressBar = QProgressBar()
@@ -240,6 +270,7 @@ class NextBtnClick:
 
     @staticmethod
     def checkGroup(groupbox, save, childrenType):
+        save.clear()
         for group in groupbox:
             listAtoms = []
             for box in group.findChildren(childrenType):
@@ -270,16 +301,34 @@ class NextBtnClick:
 
 
     def SZ(self):
-        self.layOut()
-        pass
+        self.addProgressBar()
+        print(self.keyValue(self.heightHeadAtoms, self.radioAtoms))
+        self.cls = SZ(self.u, self.keyValue(self.heightHeadAtoms, self.radioAtoms), self.path, k=self.k)
+
+        worker = Worker(self.cls, self.firstFrame, self.lastFrame, self.stepFrame)
+        worker.progressValueChanged.connect(self.updateProgressBar)
+        self.thread = Thread(target=worker.run)
+
+        self.thread.start()
+
+
 
     def Area(self):
         self.addProgressBar()
-        self.cls = Area(universe=self.u, residue_group=self.areaAtoms, file_path=self.path, k=self.k)
+        self.cls = Area(universe=self.u, residue_group=self.radioAtoms, file_path=self.path, k=self.k)
         worker = Worker(self.cls, self.firstFrame, self.lastFrame, self.stepFrame)
         worker.progressValueChanged.connect(self.updateProgressBar)
         self.thread = Thread(target=worker.run)
         self.thread.start()
+
+    def PCA(self):
+        self.addProgressBar()
+        self.cls = PCA(u=self.u, residues=self.residues,path=self.path)
+        worker = Worker(self.cls, self.firstFrame, self.lastFrame, self.stepFrame)
+        worker.progressValueChanged.connect(self.updateProgressBar)
+        self.thread = Thread(target=worker.run)
+        self.thread.start()
+
     def MeanCurvature(self):
         pass
 
